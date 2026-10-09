@@ -1,4 +1,6 @@
-use serde::Serialize;
+mod persistence;
+
+use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::{
@@ -10,12 +12,19 @@ use tauri::{
 
 const STRIP_CSS_HEIGHT: f64 = 140.0;
 
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone, Copy, Deserialize)]
 struct CatRect {
     x: f64,
     y: f64,
     w: f64,
     h: f64,
+}
+
+#[derive(Clone, Serialize)]
+struct CursorPayload {
+    near: bool,
+    x: f64,
+    y: f64,
 }
 
 #[derive(Clone, Copy, Serialize)]
@@ -26,7 +35,7 @@ struct Settings {
 }
 
 struct AppState {
-    rect: Mutex<CatRect>,
+    rects: Mutex<Vec<CatRect>>,
     settings: Mutex<Settings>,
 }
 
@@ -96,14 +105,15 @@ fn open_control(app: &AppHandle) {
     }
     let _ = WebviewWindowBuilder::new(app, "control", WebviewUrl::App("control.html".into()))
         .title("Desktop Cat")
-        .inner_size(360.0, 400.0)
+        .inner_size(440.0, 720.0)
         .resizable(false)
         .build();
 }
 
+// The areas (cat, dropped find) where clicks should reach the page; everywhere else clicks pass through.
 #[tauri::command]
-fn set_cat_rect(state: tauri::State<Arc<AppState>>, x: f64, y: f64, w: f64, h: f64) {
-    *state.rect.lock().unwrap() = CatRect { x, y, w, h };
+fn set_hit_rects(state: tauri::State<Arc<AppState>>, rects: Vec<CatRect>) {
+    *state.rects.lock().unwrap() = rects.into_iter().take(4).collect();
 }
 
 #[tauri::command]
@@ -121,19 +131,44 @@ fn toggle_setting(app: AppHandle, what: String) {
     }
 }
 
+// Lets the overlay write its latest progress before the process ends.
+fn quit_gracefully(app: &AppHandle) {
+    let a = app.clone();
+    std::thread::spawn(move || {
+        let _ = a.emit("cat-before-quit", ());
+        std::thread::sleep(Duration::from_millis(500));
+        a.exit(0);
+    });
+}
+
 #[tauri::command]
 fn quit_app(app: AppHandle) {
-    app.exit(0);
+    quit_gracefully(&app);
+}
+
+#[tauri::command]
+fn apply_saved_settings(app: AppHandle, click_through: bool) {
+    update(&app, |s| s.click_through = click_through);
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .manage(Arc::new(AppState {
-            rect: Mutex::new(CatRect::default()),
+            rects: Mutex::new(Vec::new()),
             settings: Mutex::new(Settings { visible: true, paused: false, click_through: false }),
         }))
-        .invoke_handler(tauri::generate_handler![set_cat_rect, get_settings, toggle_setting, quit_app])
+        .invoke_handler(tauri::generate_handler![
+            set_hit_rects,
+            get_settings,
+            toggle_setting,
+            quit_app,
+            apply_saved_settings,
+            persistence::load_game,
+            persistence::save_game,
+            persistence::reset_game,
+            persistence::quarantine_save
+        ])
         .setup(|app| {
             let win = app.get_webview_window("main").expect("main window");
             place(&win);
@@ -161,7 +196,7 @@ pub fn run() {
                     "vis" => update(app, |s| s.visible = !s.visible),
                     "pause" => update(app, |s| s.paused = !s.paused),
                     "ct" => update(app, |s| s.click_through = !s.click_through),
-                    "quit" => app.exit(0),
+                    "quit" => quit_gracefully(app),
                     _ => {}
                 })
                 .build(app)?;
@@ -169,8 +204,12 @@ pub fn run() {
             // Poll cursor POSITION only (never input). Clicks are enabled only while the cursor is over the cat.
             let st = app.state::<Arc<AppState>>().inner().clone();
             let w = win.clone();
+            let handle = app.handle().clone();
             std::thread::spawn(move || {
                 let mut ignoring = true;
+                let mut was_near = false;
+                let mut last_xy = (i32::MIN, i32::MIN);
+                let mut last_emit = Instant::now();
                 let area_key = |w: &WebviewWindow| (work_area(), w.scale_factor().map(|f| f.to_bits()).unwrap_or(0));
                 let mut last_area = area_key(&w);
                 let mut last_check = Instant::now();
@@ -196,13 +235,32 @@ pub fn run() {
                     let (Some((cx, cy)), Ok(pos), Ok(sf)) =
                         (cursor_pos(), w.outer_position(), w.scale_factor())
                     else { continue };
-                    let r = *st.rect.lock().unwrap();
-                    let rx = pos.x as f64 + r.x * sf;
-                    let ry = pos.y as f64 + r.y * sf;
-                    let inside = (cx as f64) >= rx
-                        && (cx as f64) < rx + r.w * sf
-                        && (cy as f64) >= ry
-                        && (cy as f64) < ry + r.h * sf;
+                    // Tell the page where the pointer is (position only) while it is near the strip.
+                    if let Ok(size) = w.outer_size() {
+                        let rel_x = (cx - pos.x) as f64 / sf;
+                        let rel_y = (cy - pos.y) as f64 / sf;
+                        let near = rel_x >= 0.0
+                            && rel_x < size.width as f64 / sf
+                            && rel_y >= -150.0
+                            && rel_y < size.height as f64 / sf + 20.0;
+                        if near {
+                            let moved = cx.abs_diff(last_xy.0) > 8 || cy.abs_diff(last_xy.1) > 8;
+                            if !was_near || (moved && last_emit.elapsed() >= Duration::from_millis(120)) {
+                                let _ = handle.emit("cat-cursor", CursorPayload { near: true, x: rel_x, y: rel_y });
+                                last_xy = (cx, cy);
+                                last_emit = Instant::now();
+                            }
+                        } else if was_near {
+                            let _ = handle.emit("cat-cursor", CursorPayload { near: false, x: 0.0, y: 0.0 });
+                        }
+                        was_near = near;
+                    }
+                    let rects = st.rects.lock().unwrap().clone();
+                    let inside = rects.iter().any(|r| {
+                        let rx = pos.x as f64 + r.x * sf;
+                        let ry = pos.y as f64 + r.y * sf;
+                        (cx as f64) >= rx && (cx as f64) < rx + r.w * sf && (cy as f64) >= ry && (cy as f64) < ry + r.h * sf
+                    });
                     if inside == ignoring && w.set_ignore_cursor_events(!inside).is_ok() {
                         ignoring = !inside;
                     }

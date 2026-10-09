@@ -2,17 +2,43 @@
 <html lang="en"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Desktop Cat</title>
 <style>
-:root{--bg:#f4efe6;--fg:#2b2622;--btn:#fff;--ac:#c4743a}
-@media(prefers-color-scheme:dark){:root{--bg:#1f1c19;--fg:#eee6da;--btn:#2c2824}}
+:root{--bg:#f4efe6;--fg:#2b2622;--btn:#fff;--ac:#c4743a;--line:#d8cfc0}
+@media(prefers-color-scheme:dark){:root{--bg:#1f1c19;--fg:#eee6da;--btn:#2c2824;--line:#3d3731}}
 body{margin:0;padding:20px;background:var(--bg);color:var(--fg);font:15px system-ui,sans-serif}
-h1{font-size:20px;margin:0 0 4px}p{margin:0 0 14px;opacity:.75}
+h1{font-size:20px;margin:0 0 4px}h2{font-size:14px;margin:18px 0 8px;opacity:.8}p{margin:0 0 14px;opacity:.75}
 button{display:block;width:100%;margin:0 0 10px;padding:10px;background:var(--btn);color:var(--fg);border:1px solid var(--ac);border-radius:8px;font:inherit;cursor:pointer}
-button.danger{border-color:#b33}#st{font-family:monospace;font-size:13px;opacity:.8;margin:6px 0 14px}
+button:disabled{opacity:.45;cursor:default}button.danger{border-color:#b33}
+.row{display:flex;gap:8px}.row button{margin:0}
+#cat{font-size:16px;margin:0 0 6px}#traits{font-family:monospace;font-size:12px;opacity:.8;line-height:1.5;white-space:pre}
+#st{font-family:monospace;font-size:12px;opacity:.7;margin:6px 0 14px}
+#grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px}
+.cell{position:relative;text-align:center;font-size:26px;padding:10px 0;background:var(--btn);border:2px solid var(--line);border-radius:8px}
+.cell.unknown{opacity:.45;font-size:22px}
+.cell .n{position:absolute;right:5px;bottom:2px;font-size:11px;opacity:.8}
+.r-uncommon{border-color:#5fa86a}.r-rare{border-color:#4f8fd8}.r-legendary{border-color:#c88a1c}.r-special{border-color:#b05ad0}
+.line{font-size:13px;margin:0 0 6px;display:flex;justify-content:space-between;gap:8px}.line span:last-child{opacity:.7;text-align:right}
+#note{color:#b33;font-size:13px;margin:0 0 8px}#pending{font-size:13px;margin:0 0 10px;padding:8px;border:1px dashed var(--ac);border-radius:8px}
+input{width:100%;box-sizing:border-box;padding:8px;margin:0 0 8px;background:var(--btn);color:var(--fg);border:1px solid var(--line);border-radius:6px;font:inherit}
 </style></head><body>
 <h1>Desktop Cat 🐈</h1><p>Closing this window leaves the cat running.</p>
+<div id="cat">…</div><div id="traits"></div>
+<h2>Interact</h2>
+<div class="row"><button id="pet">Pet</button><button id="play">Play</button><button id="inspect">Inspect</button></div>
+<h2 id="coltitle">Collection</h2>
+<div id="note"></div>
+<div id="pending" hidden>✨ Your cat left something shiny on the desktop. Click it to see what it is!</div>
+<div id="grid"></div>
+<div id="collections"></div>
+<h2>Recent finds</h2>
+<div id="recent"><p>Nothing yet. Your cat is looking.</p></div>
+<h2>Controls</h2>
 <button id="vis"></button><button id="pause"></button><button id="ct"></button>
 <div id="st"></div>
 <p>If the cat ever ignores your clicks, use the tray icon or this window to switch modes.</p>
+<h2>Start over</h2>
+<p>This erases the collection and the cat's personality. Type RESET to enable the button.</p>
+<input id="resetText" placeholder="Type RESET" autocomplete="off" />
+<button id="reset" class="danger" disabled>Erase all progress</button>
 <button id="quit" class="danger">Quit Desktop Cat</button>
 <script type="module" src="/src/control.ts"></script>
 </body></html>

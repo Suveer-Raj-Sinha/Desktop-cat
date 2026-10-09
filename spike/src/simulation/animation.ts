@@ -13,7 +13,7 @@ export const ROW_LEFT = 4; // direction pair 2 (rows 4-5)
 export const ROW_RIGHT = 12; // direction pair 6 (rows 12-13)
 
 export const ANIMS: Record<AnimName, AnimDef> = {
-  sit: { block: 0, frames: 6, loop: false, ms: 170 },
+  sit: { block: 0, frames: 6, loop: false, ms: 110 },
   look: { block: 1, frames: 5, loop: true, ms: 230 },
   lay: { block: 2, frames: 8, loop: false, ms: 200 },
   walk: { block: 3, frames: 4, loop: true, ms: 150 },
