@@ -1,0 +1,8 @@
+Edit src-tauri/Cargo.toml:
+
+1) Change the tauri line to:
+tauri = { version = "2", features = ["tray-icon"] }
+
+2) Add at the very end of the file:
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }

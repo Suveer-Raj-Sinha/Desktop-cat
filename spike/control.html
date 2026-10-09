@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Desktop Cat</title>
+<style>
+:root{--bg:#f4efe6;--fg:#2b2622;--btn:#fff;--ac:#c4743a}
+@media(prefers-color-scheme:dark){:root{--bg:#1f1c19;--fg:#eee6da;--btn:#2c2824}}
+body{margin:0;padding:20px;background:var(--bg);color:var(--fg);font:15px system-ui,sans-serif}
+h1{font-size:20px;margin:0 0 4px}p{margin:0 0 14px;opacity:.75}
+button{display:block;width:100%;margin:0 0 10px;padding:10px;background:var(--btn);color:var(--fg);border:1px solid var(--ac);border-radius:8px;font:inherit;cursor:pointer}
+button.danger{border-color:#b33}#st{font-family:monospace;font-size:13px;opacity:.8;margin:6px 0 14px}
+</style></head><body>
+<h1>Desktop Cat 🐈</h1><p>Closing this window leaves the cat running.</p>
+<button id="vis"></button><button id="pause"></button><button id="ct"></button>
+<div id="st"></div>
+<p>If the cat ever ignores your clicks, use the tray icon or this window to switch modes.</p>
+<button id="quit" class="danger">Quit Desktop Cat</button>
+<script type="module" src="/src/control.ts"></script>
+</body></html>

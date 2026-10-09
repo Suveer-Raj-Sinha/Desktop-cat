@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capability for the overlay and control windows",
+  "windows": ["main", "control"],
+  "permissions": ["core:default"]
+}
