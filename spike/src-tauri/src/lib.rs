@@ -1,8 +1,12 @@
+mod native;
 mod persistence;
+mod watcher;
+
+use tauri_plugin_autostart::ManagerExt;
 
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
@@ -20,18 +24,13 @@ struct CatRect {
     h: f64,
 }
 
-#[derive(Clone, Serialize)]
-struct CursorPayload {
-    near: bool,
-    x: f64,
-    y: f64,
-}
-
 #[derive(Clone, Copy, Serialize)]
 struct Settings {
     visible: bool,
     paused: bool,
     click_through: bool,
+    auto_hidden: bool,      // stepped aside because a fullscreen app is in front
+    hide_in_fullscreen: bool, // the user's preference for doing that
 }
 
 struct AppState {
@@ -45,31 +44,8 @@ struct TrayItems {
     ct: MenuItem<tauri::Wry>,
 }
 
-#[cfg(windows)]
-fn work_area() -> Option<(i32, i32, i32, i32)> {
-    use windows_sys::Win32::Foundation::RECT;
-    use windows_sys::Win32::UI::WindowsAndMessaging::{SystemParametersInfoW, SPI_GETWORKAREA};
-    let mut r = RECT { left: 0, top: 0, right: 0, bottom: 0 };
-    let ok = unsafe { SystemParametersInfoW(SPI_GETWORKAREA, 0, &mut r as *mut RECT as *mut _, 0) };
-    if ok != 0 { Some((r.left, r.top, r.right, r.bottom)) } else { None }
-}
-
-#[cfg(not(windows))]
-fn work_area() -> Option<(i32, i32, i32, i32)> { None }
-
-#[cfg(windows)]
-fn cursor_pos() -> Option<(i32, i32)> {
-    use windows_sys::Win32::Foundation::POINT;
-    use windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos;
-    let mut p = POINT { x: 0, y: 0 };
-    if unsafe { GetCursorPos(&mut p) } != 0 { Some((p.x, p.y)) } else { None }
-}
-
-#[cfg(not(windows))]
-fn cursor_pos() -> Option<(i32, i32)> { None }
-
 fn place(win: &WebviewWindow) {
-    if let (Some((l, _t, r, b)), Ok(sf)) = (work_area(), win.scale_factor()) {
+    if let (Some((l, _t, r, b)), Ok(sf)) = (native::work_area(), win.scale_factor()) {
         let h = (STRIP_CSS_HEIGHT * sf).round() as i32;
         let _ = win.set_size(PhysicalSize::new((r - l) as u32, h as u32));
         let _ = win.set_position(PhysicalPosition::new(l, b - h));
@@ -89,7 +65,7 @@ fn update(app: &AppHandle, f: impl FnOnce(&mut Settings)) {
     let _ = t.vis.set_text(if s.visible { "Hide cat" } else { "Show cat" });
     let _ = t.pause.set_text(if s.paused { "Resume" } else { "Pause" });
     let _ = t.ct.set_text(if s.click_through { "Switch to interactive mode" } else { "Switch to click-through mode" });
-    if !s.visible || s.click_through {
+    if !s.visible || s.click_through || s.auto_hidden {
         if let Some(w) = app.get_webview_window("main") {
             let _ = w.set_ignore_cursor_events(true);
         }
@@ -105,7 +81,7 @@ fn open_control(app: &AppHandle) {
     }
     let _ = WebviewWindowBuilder::new(app, "control", WebviewUrl::App("control.html".into()))
         .title("Desktop Cat")
-        .inner_size(440.0, 720.0)
+        .inner_size(640.0, 680.0)
         .resizable(false)
         .build();
 }
@@ -147,16 +123,45 @@ fn quit_app(app: AppHandle) {
 }
 
 #[tauri::command]
+fn get_autostart(app: AppHandle) -> Result<bool, String> {
+    app.autolaunch().is_enabled().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_autostart(app: AppHandle, enabled: bool) -> Result<(), String> {
+    let manager = app.autolaunch();
+    let result = if enabled { manager.enable() } else { manager.disable() };
+    result.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn apply_saved_settings(app: AppHandle, click_through: bool) {
     update(&app, |s| s.click_through = click_through);
+}
+
+// The user's choice to hide the cat while a fullscreen app is in front. Turning it off brings the cat straight back.
+#[tauri::command]
+fn set_hide_in_fullscreen(app: AppHandle, enabled: bool) {
+    update(&app, |s| {
+        s.hide_in_fullscreen = enabled;
+        if !enabled {
+            s.auto_hidden = false;
+        }
+    });
+}
+
+#[tauri::command]
+fn get_platform_info() -> native::TaskbarInfo {
+    native::taskbar_info()
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None))
         .manage(Arc::new(AppState {
             rects: Mutex::new(Vec::new()),
-            settings: Mutex::new(Settings { visible: true, paused: false, click_through: false }),
+            settings: Mutex::new(Settings { visible: true, paused: false, click_through: false, auto_hidden: false, hide_in_fullscreen: true }),
         }))
         .invoke_handler(tauri::generate_handler![
             set_hit_rects,
@@ -164,6 +169,10 @@ pub fn run() {
             toggle_setting,
             quit_app,
             apply_saved_settings,
+            set_hide_in_fullscreen,
+            get_platform_info,
+            get_autostart,
+            set_autostart,
             persistence::load_game,
             persistence::save_game,
             persistence::reset_game,
@@ -201,71 +210,7 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            // Poll cursor POSITION only (never input). Clicks are enabled only while the cursor is over the cat.
-            let st = app.state::<Arc<AppState>>().inner().clone();
-            let w = win.clone();
-            let handle = app.handle().clone();
-            std::thread::spawn(move || {
-                let mut ignoring = true;
-                let mut was_near = false;
-                let mut last_xy = (i32::MIN, i32::MIN);
-                let mut last_emit = Instant::now();
-                let area_key = |w: &WebviewWindow| (work_area(), w.scale_factor().map(|f| f.to_bits()).unwrap_or(0));
-                let mut last_area = area_key(&w);
-                let mut last_check = Instant::now();
-                loop {
-                    // Every 2s: if the work area or display scaling changed, move the strip back onto the screen.
-                    if last_check.elapsed() >= Duration::from_secs(2) {
-                        last_check = Instant::now();
-                        let key = area_key(&w);
-                        if key != last_area {
-                            last_area = key;
-                            place(&w);
-                        }
-                    }
-                    let s = *st.settings.lock().unwrap();
-                    if !s.visible || s.click_through {
-                        if !ignoring && w.set_ignore_cursor_events(true).is_ok() {
-                            ignoring = true;
-                        }
-                        std::thread::sleep(Duration::from_millis(250));
-                        continue;
-                    }
-                    std::thread::sleep(Duration::from_millis(40));
-                    let (Some((cx, cy)), Ok(pos), Ok(sf)) =
-                        (cursor_pos(), w.outer_position(), w.scale_factor())
-                    else { continue };
-                    // Tell the page where the pointer is (position only) while it is near the strip.
-                    if let Ok(size) = w.outer_size() {
-                        let rel_x = (cx - pos.x) as f64 / sf;
-                        let rel_y = (cy - pos.y) as f64 / sf;
-                        let near = rel_x >= 0.0
-                            && rel_x < size.width as f64 / sf
-                            && rel_y >= -150.0
-                            && rel_y < size.height as f64 / sf + 20.0;
-                        if near {
-                            let moved = cx.abs_diff(last_xy.0) > 8 || cy.abs_diff(last_xy.1) > 8;
-                            if !was_near || (moved && last_emit.elapsed() >= Duration::from_millis(120)) {
-                                let _ = handle.emit("cat-cursor", CursorPayload { near: true, x: rel_x, y: rel_y });
-                                last_xy = (cx, cy);
-                                last_emit = Instant::now();
-                            }
-                        } else if was_near {
-                            let _ = handle.emit("cat-cursor", CursorPayload { near: false, x: 0.0, y: 0.0 });
-                        }
-                        was_near = near;
-                    }
-                    let rects = st.rects.lock().unwrap().clone();
-                    let inside = rects.iter().any(|r| {
-                        let rx = pos.x as f64 + r.x * sf;
-                        let ry = pos.y as f64 + r.y * sf;
-                        (cx as f64) >= rx && (cx as f64) < rx + r.w * sf && (cy as f64) >= ry && (cy as f64) < ry + r.h * sf
-                    });
-                    if inside == ignoring && w.set_ignore_cursor_events(!inside).is_ok() {
-                        ignoring = !inside;
-                    }
-                }
-            });
+            watcher::start(app.handle().clone(), win.clone(), app.state::<Arc<AppState>>().inner().clone());
             Ok(())
         })
         .run(tauri::generate_context!())

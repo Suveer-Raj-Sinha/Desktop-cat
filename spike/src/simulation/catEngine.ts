@@ -12,6 +12,7 @@ export interface EngineEvent {
 }
 export type Trait = "curiosity" | "playfulness" | "affection" | "laziness" | "mischief";
 export type Traits = Record<Trait, number>;
+export type Intensity = "low" | "normal";
 export type Interaction = "pet" | "play" | "inspect";
 export const INTERACTIONS: readonly Interaction[] = ["pet", "play", "inspect"];
 
@@ -55,6 +56,8 @@ const COOLDOWN_PLAY = 20000;
 const COOLDOWN_PONDER = 45000;
 const DISCOVER_MS: Record<number, number> = { 1: 2500, 2: 3500, 3: 5000 };
 const EVENT_CAP = 8;
+const LOW_SPEED = 0.7;
+const LOW_PLAY = 0.25;
 // Where the cat goes to ponder: the middle of the strip, roughly where taskbar icons sit (fractions of the range).
 export const PERCH_LO = 0.3;
 export const PERCH_HI = 0.7;
@@ -138,6 +141,9 @@ export class CatEngine {
   private cursor: number | null = null;
   private petTimes: number[] = [];
   private cooldown: Partial<Record<Behavior, number>> = {};
+  private intensity: Intensity = "normal";
+  private perchLo = PERCH_LO;
+  private perchHi = PERCH_HI;
   private events: EngineEvent[] = [];
   private inspectPending = false;
 
@@ -155,6 +161,18 @@ export class CatEngine {
   // Replaces the traits, e.g. with the ones loaded from a save.
   setTraits(t: Traits): void {
     for (const k of Object.keys(this.traits) as Trait[]) this.traits[k] = clamp(t[k] ?? this.traits[k], 0, 100);
+  }
+
+  // Where along the strip the cat goes to ponder, as fractions of its range. Ignores nonsense values.
+  setPerch(lo: number, hi: number): void {
+    if (!(lo >= 0 && hi <= 1 && lo < hi)) return;
+    this.perchLo = lo;
+    this.perchHi = hi;
+  }
+
+  // "low" makes the cat calmer: slower, fewer runs, no sudden changes of direction.
+  setIntensity(i: Intensity): void {
+    this.intensity = i;
   }
 
   // Hands over (and clears) the moments when a discovery could happen.
@@ -215,7 +233,7 @@ export class CatEngine {
     const s = this.state;
     if (s.behavior === "walk" || s.behavior === "play") {
       this.maybeRetarget(dt);
-      s.x += s.dir * (SPEED[s.anim] ?? 0) * (dt / 1000);
+      s.x += s.dir * (SPEED[s.anim] ?? 0) * (this.intensity === "low" ? LOW_SPEED : 1) * (dt / 1000);
       const reached = s.dir > 0 ? s.x >= this.target : s.x <= this.target;
       if (reached) {
         s.x = this.target;
@@ -323,6 +341,7 @@ export class CatEngine {
       default:
         break;
     }
+    if (b === "play" && this.intensity === "low") w *= LOW_PLAY;
     return w * (MOOD_MULT[this.state.mood][b] ?? 1);
   }
 
@@ -358,7 +377,7 @@ export class CatEngine {
   // Mischief: now and then a walking cat changes its mind and heads somewhere else.
   private maybeRetarget(dt: number): void {
     const s = this.state;
-    if (s.behavior !== "walk" || this.after !== null || !this.feasible("walk")) return;
+    if (this.intensity === "low" || s.behavior !== "walk" || this.after !== null || !this.feasible("walk")) return;
     if (this.env.random() < (dt / 1000) * (this.traits.mischief / 100) * 0.03) this.moveTo(this.randomTarget(MIN_WALK));
   }
 
@@ -386,8 +405,8 @@ export class CatEngine {
 
   // Pondering happens over the "icons": walk to the middle of the strip first if needed, then sit and think.
   private goPonder(): void {
-    const lo = this.maxX * PERCH_LO;
-    const hi = this.maxX * PERCH_HI;
+    const lo = this.maxX * this.perchLo;
+    const hi = this.maxX * this.perchHi;
     if (this.state.x >= lo && this.state.x <= hi) {
       this.startBehavior("ponder");
       return;

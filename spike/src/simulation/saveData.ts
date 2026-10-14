@@ -1,5 +1,7 @@
 import { DEFAULT_TRAITS } from "./catEngine";
 import type { Traits } from "./catEngine";
+import { DEFAULT_CAT_SHEET, isCatSheet } from "./catSheets";
+import { sanitizeEquipped } from "./cosmetics";
 import { COLLECTIONS, KNOWN_COSMETICS, TREASURE_BY_ID } from "./treasures";
 
 export const SAVE_VERSION = 1;
@@ -10,6 +12,8 @@ export interface SaveSettings {
   clickThrough: boolean;
   soundEnabled: boolean;
   animationIntensity: "low" | "normal";
+  catColor: string; // id of a sheet in catSheets.ts
+  hideInFullscreen: boolean; // step aside while a fullscreen app (video, game) is in front
 }
 
 export interface HistoryEntry {
@@ -34,6 +38,7 @@ export interface SaveData {
   lastDiscoveryAt: number | null;
   pendingDrop: PendingDrop | null;
   unlockedCosmetics: string[];
+  equippedCosmetics: string[]; // worn right now; always a subset of unlockedCosmetics, one per slot
   completedCollections: string[];
   settings: SaveSettings;
 }
@@ -44,6 +49,7 @@ export interface CollectionView {
   history: HistoryEntry[];
   completed: string[];
   unlocked: string[];
+  equipped: string[];
   discoveries: number;
   pending: boolean; // something is waiting to be picked up
   note?: string;
@@ -73,8 +79,9 @@ export function defaultSave(now: number, id: string): SaveData {
     lastDiscoveryAt: null,
     pendingDrop: null,
     unlockedCosmetics: [],
+    equippedCosmetics: [],
     completedCollections: [],
-    settings: { clickThrough: false, soundEnabled: true, animationIntensity: "normal" },
+    settings: { clickThrough: false, soundEnabled: true, animationIntensity: "normal", catColor: DEFAULT_CAT_SHEET, hideInFullscreen: true },
   };
 }
 
@@ -92,6 +99,7 @@ export function collectionView(save: SaveData, note?: string): CollectionView {
     history: save.history.slice(-12),
     completed: save.completedCollections,
     unlocked: save.unlockedCosmetics,
+    equipped: save.equippedCosmetics,
     discoveries: save.totalDiscoveries,
     pending: save.pendingDrop !== null,
     note,
@@ -198,11 +206,14 @@ function sanitize(raw: Record<string, unknown>, now: number, version: number): S
     lastDiscoveryAt: typeof raw.lastDiscoveryAt === "number" && Number.isFinite(raw.lastDiscoveryAt) ? Math.min(raw.lastDiscoveryAt, now) : null,
     pendingDrop,
     unlockedCosmetics: [...cosmetics],
+    equippedCosmetics: sanitizeEquipped(raw.equippedCosmetics, [...cosmetics]),
     completedCollections: completed,
     settings: {
       clickThrough: bool(settingsRaw.clickThrough, false),
       soundEnabled: bool(settingsRaw.soundEnabled, true),
       animationIntensity: settingsRaw.animationIntensity === "low" ? "low" : "normal",
+      catColor: isCatSheet(settingsRaw.catColor) ? settingsRaw.catColor : DEFAULT_CAT_SHEET,
+      hideInFullscreen: bool(settingsRaw.hideInFullscreen, true),
     },
   };
 }

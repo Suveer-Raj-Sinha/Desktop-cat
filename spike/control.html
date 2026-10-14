@@ -2,43 +2,135 @@
 <html lang="en"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Desktop Cat</title>
 <style>
-:root{--bg:#f4efe6;--fg:#2b2622;--btn:#fff;--ac:#c4743a;--line:#d8cfc0}
-@media(prefers-color-scheme:dark){:root{--bg:#1f1c19;--fg:#eee6da;--btn:#2c2824;--line:#3d3731}}
-body{margin:0;padding:20px;background:var(--bg);color:var(--fg);font:15px system-ui,sans-serif}
-h1{font-size:20px;margin:0 0 4px}h2{font-size:14px;margin:18px 0 8px;opacity:.8}p{margin:0 0 14px;opacity:.75}
-button{display:block;width:100%;margin:0 0 10px;padding:10px;background:var(--btn);color:var(--fg);border:1px solid var(--ac);border-radius:8px;font:inherit;cursor:pointer}
-button:disabled{opacity:.45;cursor:default}button.danger{border-color:#b33}
-.row{display:flex;gap:8px}.row button{margin:0}
-#cat{font-size:16px;margin:0 0 6px}#traits{font-family:monospace;font-size:12px;opacity:.8;line-height:1.5;white-space:pre}
-#st{font-family:monospace;font-size:12px;opacity:.7;margin:6px 0 14px}
-#grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px}
-.cell{position:relative;text-align:center;font-size:26px;padding:10px 0;background:var(--btn);border:2px solid var(--line);border-radius:8px}
-.cell.unknown{opacity:.45;font-size:22px}
-.cell .n{position:absolute;right:5px;bottom:2px;font-size:11px;opacity:.8}
+:root{--bg:#f6f1e8;--panel:#ffffff;--fg:#2b2622;--muted:#7a7066;--line:#e4dccf;--ac:#c4743a;--ac-soft:#f3e2d3;--danger:#b33}
+@media(prefers-color-scheme:dark){:root{--bg:#1d1a17;--panel:#27231f;--fg:#efe7db;--muted:#a39888;--line:#3a342d;--ac:#e08d4f;--ac-soft:#3b2d22;--danger:#e26a6a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,"Segoe UI",sans-serif}
+#app{display:flex;height:100vh}
+nav{width:168px;flex:none;padding:16px 10px;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;gap:4px}
+.brand{font-weight:700;font-size:15px;padding:4px 10px 14px}
+.tab{display:flex;justify-content:space-between;align-items:center;width:100%;padding:9px 10px;border:0;border-radius:8px;background:none;color:var(--fg);font:inherit;text-align:left;cursor:pointer;transition:background .15s}
+.tab:hover{background:var(--ac-soft)}.tab.active{background:var(--ac-soft);font-weight:600;box-shadow:inset 3px 0 0 var(--ac)}
+kbd{font:11px ui-monospace,Consolas,monospace;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:0 5px;background:var(--bg)}
+.spacer{flex:1}#conn{font-size:12px;color:var(--muted);padding:6px 10px}
+main{flex:1;overflow-y:auto;padding:20px 22px 28px}
+.page{display:none}.page.active{display:block;animation:fade .18s ease}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+h1{font-size:20px;margin:0 0 14px}h2{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:22px 0 8px}
+p{margin:0 0 10px}.muted{color:var(--muted)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+.hero{display:flex;gap:14px;align-items:center}#moodEmoji{font-size:38px;line-height:1}#catName{font-size:18px;font-weight:700}#catDoing{color:var(--muted)}
+.trait{display:grid;grid-template-columns:96px 1fr 28px;gap:8px;align-items:center;margin:6px 0;font-size:13px}
+.bar{height:8px;background:var(--line);border-radius:99px;overflow:hidden}.bar>i{display:block;height:100%;background:var(--ac);border-radius:99px;transition:width .4s ease}
+button.btn{padding:9px 12px;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:8px;font:inherit;cursor:pointer;transition:border-color .15s,background .15s}
+button.btn:hover:not(:disabled){border-color:var(--ac);background:var(--ac-soft)}button.btn:disabled{opacity:.45;cursor:default}
+button.btn.danger{color:var(--danger);border-color:var(--danger)}button.btn.danger:hover:not(:disabled){background:transparent}
+.row{display:flex;gap:8px;flex-wrap:wrap}.row .btn{flex:1}
+.line{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}.line:last-child{border:0}.line span:last-child{color:var(--muted);text-align:right}
+.empty{color:var(--muted);padding:10px 0}
+#pending{margin:12px 0 0;padding:10px 12px;border:1px dashed var(--ac);border-radius:10px;background:var(--ac-soft)}
+#banner{margin:0 0 14px;padding:10px 12px;border-radius:10px;background:var(--ac-soft);border:1px solid var(--ac)}#banner.error{border-color:var(--danger)}
+#note{color:var(--danger);margin:0 0 8px}
+#grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:8px}
+.cell{position:relative;text-align:center;font-size:26px;padding:10px 0;background:var(--panel);border:2px solid var(--line);border-radius:10px;transition:transform .15s}
+.cell:hover{transform:translateY(-2px)}.cell.unknown{opacity:.45;font-size:22px}.cell .n{position:absolute;right:5px;bottom:2px;font-size:11px;color:var(--muted)}
 .r-uncommon{border-color:#5fa86a}.r-rare{border-color:#4f8fd8}.r-legendary{border-color:#c88a1c}.r-special{border-color:#b05ad0}
-.line{font-size:13px;margin:0 0 6px;display:flex;justify-content:space-between;gap:8px}.line span:last-child{opacity:.7;text-align:right}
-#note{color:#b33;font-size:13px;margin:0 0 8px}#pending{font-size:13px;margin:0 0 10px;padding:8px;border:1px dashed var(--ac);border-radius:8px}
-input{width:100%;box-sizing:border-box;padding:8px;margin:0 0 8px;background:var(--btn);color:var(--fg);border:1px solid var(--line);border-radius:6px;font:inherit}
+.set{margin:8px 0}.set .top{display:flex;justify-content:space-between;margin-bottom:4px}
+#swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:8px}
+.preview{display:flex;justify-content:center;padding:10px}.preview canvas{image-rendering:pixelated}
+.swatch{height:76px;padding:0;border:2px solid var(--line);border-radius:10px;background-color:var(--panel);cursor:pointer;position:relative;transition:border-color .15s,transform .15s}
+.swatch:hover{transform:translateY(-2px)}.swatch.sel{border-color:var(--ac);box-shadow:0 0 0 2px var(--ac-soft)}
+.swatch i{position:absolute;inset:6px 0 0 4px;width:64px;height:64px;image-rendering:pixelated}
+.swatch span{position:absolute;left:0;right:0;bottom:2px;font-size:10px;color:var(--muted);text-align:center}
+.setting{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:11px 0;border-bottom:1px solid var(--line)}.setting:last-child{border:0}
+.setting b{font-weight:600}.setting small{display:block;color:var(--muted);font-size:12px}
+.switch{position:relative;display:inline-block;width:42px;height:24px;flex:none}.switch input{opacity:0;width:0;height:0}
+.switch span{position:absolute;inset:0;background:var(--line);border-radius:99px;transition:background .18s;cursor:pointer}
+.switch span::before{content:"";position:absolute;left:3px;top:3px;width:18px;height:18px;background:#fff;border-radius:50%;transition:transform .18s}
+.switch input:checked+span{background:var(--ac)}.switch input:checked+span::before{transform:translateX(18px)}
+.switch input:focus-visible+span,.tab:focus-visible,.btn:focus-visible,.swatch:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+.seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}.seg button{padding:6px 12px;border:0;background:var(--panel);color:var(--fg);font:inherit;cursor:pointer}.seg button.on{background:var(--ac);color:#fff}
+.cosrow{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}.cosrow:last-child{border:0}.cosrow .btn{padding:5px 12px}
+#autoNote{color:var(--danger);font-size:12px}
+input[type=text]{width:100%;padding:8px;margin:0 0 8px;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:8px;font:inherit}
+table.keys td{padding:3px 12px 3px 0}
+#toast{position:fixed;left:50%;bottom:18px;transform:translate(-50%,20px);background:var(--fg);color:var(--bg);padding:9px 14px;border-radius:10px;opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;max-width:80%}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important}}
 </style></head><body>
-<h1>Desktop Cat 🐈</h1><p>Closing this window leaves the cat running.</p>
-<div id="cat">…</div><div id="traits"></div>
-<h2>Interact</h2>
-<div class="row"><button id="pet">Pet</button><button id="play">Play</button><button id="inspect">Inspect</button></div>
-<h2 id="coltitle">Collection</h2>
-<div id="note"></div>
-<div id="pending" hidden>✨ Your cat left something shiny on the desktop. Click it to see what it is!</div>
-<div id="grid"></div>
-<div id="collections"></div>
-<h2>Recent finds</h2>
-<div id="recent"><p>Nothing yet. Your cat is looking.</p></div>
-<h2>Controls</h2>
-<button id="vis"></button><button id="pause"></button><button id="ct"></button>
-<div id="st"></div>
-<p>If the cat ever ignores your clicks, use the tray icon or this window to switch modes.</p>
-<h2>Start over</h2>
-<p>This erases the collection and the cat's personality. Type RESET to enable the button.</p>
-<input id="resetText" placeholder="Type RESET" autocomplete="off" />
-<button id="reset" class="danger" disabled>Erase all progress</button>
-<button id="quit" class="danger">Quit Desktop Cat</button>
+<div id="app">
+<nav aria-label="Pages">
+  <div class="brand">🐈 Desktop Cat</div>
+  <button class="tab active" data-page="home">Home <kbd>1</kbd></button>
+  <button class="tab" data-page="collection">Collection <kbd>2</kbd></button>
+  <button class="tab" data-page="appearance">Appearance <kbd>3</kbd></button>
+  <button class="tab" data-page="settings">Settings <kbd>4</kbd></button>
+  <div class="spacer"></div>
+  <div id="conn">Connecting…</div>
+</nav>
+<main>
+  <div id="banner" hidden></div>
+
+  <section id="page-home" class="page active">
+    <div class="card hero"><div id="moodEmoji">🐈</div><div><div id="catName">…</div><div id="catDoing">Looking for the cat…</div></div></div>
+    <div id="pending" hidden>✨ Your cat left something shiny on the desktop. Click it to see what it is!</div>
+    <h2>Personality</h2><div class="card" id="traits"></div>
+    <h2>Spend time together</h2>
+    <div class="row">
+      <button class="btn" id="pet">Pet <kbd>P</kbd></button>
+      <button class="btn" id="play">Play <kbd>L</kbd></button>
+      <button class="btn" id="inspect">Inspect <kbd>I</kbd></button>
+    </div>
+    <p class="muted" id="idleHint" hidden style="margin-top:8px">The cat is hidden or paused, so it can't play right now.</p>
+    <h2>Recent activity</h2><div class="card" id="activity"><div class="empty">Nothing yet. Say hello!</div></div>
+  </section>
+
+  <section id="page-collection" class="page">
+    <h1>Collection</h1>
+    <div id="progressText" class="muted"></div>
+    <div class="bar" style="margin:6px 0 14px"><i id="progressBar" style="width:0"></i></div>
+    <div id="note"></div>
+    <div id="grid"></div>
+    <h2>Sets</h2><div id="collections"></div>
+    <h2>Recent finds</h2><div class="card" id="recent"><div class="empty">Nothing yet. Your cat is looking.</div></div>
+  </section>
+
+  <section id="page-appearance" class="page">
+    <h1>Appearance</h1>
+    <div class="card preview"><canvas id="preview" aria-label="Preview of your cat"></canvas></div>
+    <h2>Fur colour</h2><div id="swatches"></div>
+    <h2>Cosmetics</h2><div class="card" id="cosmetics"></div>
+    <p class="muted" style="margin-top:8px">Cosmetics are unlocked by completing sets. One item per spot: head or neck.</p>
+  </section>
+
+  <section id="page-settings" class="page">
+    <h1>Settings</h1>
+    <div class="card">
+      <div class="setting"><div><b>Show the cat</b><small>Hiding keeps the app running in the tray.</small></div><label class="switch"><input type="checkbox" id="sVisible" /><span></span></label></div>
+      <div class="setting"><div><b>Pause</b><small>Freezes the cat where it is.</small></div><label class="switch"><input type="checkbox" id="sPaused" /><span></span></label></div>
+      <div class="setting"><div><b>Click-through mode</b><small>The cat ignores clicks entirely. Switch it off here or from the tray.</small></div><label class="switch"><input type="checkbox" id="sCt" /><span></span></label></div>
+      <div class="setting"><div><b>Hide during fullscreen apps</b><small>Steps aside while a video, game or presentation is fullscreen.</small></div><label class="switch"><input type="checkbox" id="sFs" /><span></span></label></div>
+      <div class="setting"><div><b>Sound effects</b><small>Small chimes for pets and finds.</small></div><label class="switch"><input type="checkbox" id="sSound" /><span></span></label></div>
+      <div class="setting"><div><b>Animation intensity</b><small>Calm means slower walking and fewer runs.</small></div><div class="seg" id="sIntensity"><button data-v="low">Calm</button><button data-v="normal">Normal</button></div></div>
+      <div class="setting"><div><b>Launch at startup</b><small>Start the cat when you sign in to Windows.</small><div id="autoNote"></div></div><label class="switch"><input type="checkbox" id="sAuto" /><span></span></label></div>
+    </div>
+    <h2>Keyboard shortcuts (this window)</h2>
+    <div class="card"><table class="keys">
+      <tr><td><kbd>1</kbd> – <kbd>4</kbd></td><td>Switch pages</td></tr>
+      <tr><td><kbd>P</kbd> <kbd>L</kbd> <kbd>I</kbd></td><td>Pet, play, inspect</td></tr>
+      <tr><td><kbd>H</kbd></td><td>Hide or show the cat</td></tr>
+    </table></div>
+    <h2>Start over</h2>
+    <div class="card">
+      <p>This erases the collection and the cat's personality. Your settings stay. Type RESET to enable the button.</p>
+      <input type="text" id="resetText" placeholder="Type RESET" autocomplete="off" />
+      <button class="btn danger" id="reset" disabled>Erase all progress</button>
+    </div>
+    <h2>Quit</h2>
+    <button class="btn danger" id="quit">Quit Desktop Cat</button>
+  </section>
+</main>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
 <script type="module" src="/src/control.ts"></script>
 </body></html>

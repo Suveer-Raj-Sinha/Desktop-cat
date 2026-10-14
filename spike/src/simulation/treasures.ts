@@ -14,6 +14,7 @@ export interface Collection {
   itemIds: readonly string[];
   rewardCosmetic: string;
   rewardName: string;
+  rewardIcon: string;
 }
 
 export const TREASURES: readonly Treasure[] = [
@@ -42,6 +43,7 @@ export const COLLECTIONS: readonly Collection[] = [
     itemIds: ["button", "paper-clip", "cork", "bottle-cap", "yarn"],
     rewardCosmetic: "red-ribbon",
     rewardName: "Red Ribbon",
+    rewardIcon: "🎀",
   },
   {
     id: "shiny-things",
@@ -49,6 +51,7 @@ export const COLLECTIONS: readonly Collection[] = [
     itemIds: ["coin", "bell", "marble", "thimble", "locket"],
     rewardCosmetic: "bell-collar",
     rewardName: "Bell Collar",
+    rewardIcon: "🔔",
   },
   {
     id: "nature-finds",
@@ -56,6 +59,7 @@ export const COLLECTIONS: readonly Collection[] = [
     itemIds: ["feather", "shell", "clover", "fish-charm"],
     rewardCosmetic: "leaf-crown",
     rewardName: "Leaf Crown",
+    rewardIcon: "🌿",
   },
 ];
 

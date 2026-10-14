@@ -56,7 +56,7 @@ describe("save validation", () => {
     expect(s.totalDiscoveries).toBe(3 + 9999);
     expect(s.lastDiscoveryAt).toBe(NOW);
     expect(s.unlockedCosmetics).toEqual(["red-ribbon"]);
-    expect(s.settings).toEqual({ clickThrough: false, soundEnabled: false, animationIntensity: "low" });
+    expect(s.settings).toEqual({ clickThrough: false, soundEnabled: false, animationIntensity: "low", catColor: "black_0", hideInFullscreen: true });
   });
 
   it("derives completed collections and their rewards from the inventory", () => {
@@ -116,5 +116,18 @@ describe("save migrations", () => {
   it("does not report current-version saves as migrated", () => {
     const r = parseSave(serializeSave(defaultSave(NOW, "x")), NOW);
     expect(r.ok && r.migrated).toBe(false);
+  });
+});
+
+describe("appearance setting", () => {
+  it("keeps a valid colour and falls back for unknown ones", () => {
+    const good = parseSave(JSON.stringify({ version: 1, settings: { catColor: "orange_2" } }), NOW);
+    expect(good.ok && good.save.settings.catColor).toBe("orange_2");
+    for (const bad of ["../../etc/passwd", "nope", 5, null, ""]) {
+      const r = parseSave(JSON.stringify({ version: 1, settings: { catColor: bad } }), NOW);
+      expect(r.ok && r.save.settings.catColor).toBe("black_0");
+    }
+    const old = parseSave(JSON.stringify({ version: 1, settings: { soundEnabled: false } }), NOW); // saves from Phase 4
+    expect(old.ok && old.save.settings.catColor).toBe("black_0");
   });
 });
